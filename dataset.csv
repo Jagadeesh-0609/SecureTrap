@@ -1,0 +1,8 @@
+command,type
+ls,script
+pwd,script
+whoami,script
+wget malware.sh,bot
+curl hack.sh,bot
+cat /etc/passwd,skilled
+nano file.txt,skilled
