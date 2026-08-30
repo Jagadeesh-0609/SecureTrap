@@ -1,246 +1,225 @@
 # SecureTrap
 
-SecureTrap is a modular, honeypot-independent cybersecurity research framework for collecting, processing, analyzing, and monitoring honeypot activity.
+**SecureTrap** is a modular cybersecurity research framework for collecting, processing, analyzing, and monitoring honeypot activity.
 
-The current implementation uses **Cowrie** as the active honeypot source and performs **unsupervised anomaly detection using IsolationForest**. Events are ingested, validated, processed, enriched, converted into a stable dataset representation, analyzed by the AI engine, converted into alerts, persisted in SQLite, and exposed through a read-only command-line interface.
+The current implementation uses **Cowrie** as the active honeypot and **IsolationForest** for unsupervised anomaly detection. The system ingests events, validates and enriches them, builds structured records, detects anomalies, generates alerts, stores them in SQLite, and provides read-only operator visibility through a CLI.
 
-> **Important:** SecureTrap currently has no verified ground-truth attack-label dataset. An anomaly is therefore **not** treated as a confirmed attack or as a supervised classification result.
+> **Important:** SecureTrap currently has no verified ground-truth attack-label dataset. An anomaly is not a confirmed attack, and the current runtime does not perform supervised attack/benign classification.
 
----
+## 🚀 Features
 
-## Architecture
+- 🐝 Cowrie honeypot integration
+- 📥 Batch and live JSON log ingestion
+- ✅ Event validation and normalization
+- 🔎 Observable command enrichment
+- 📊 Structured dataset generation
+- 🧮 Deterministic feature extraction
+- 🤖 IsolationForest anomaly detection
+- 🔒 Explicit fit/inference lifecycle
+- 🚨 Structured alert generation
+- 💾 SQLite alert persistence
+- 📋 Read-only alert reporting
+- 💻 Operator CLI
+- 🧪 Extensive automated tests
+- 🔌 Honeypot-independent downstream architecture
+
+## 🏗️ Architecture
+
+```mermaid
+flowchart TB
+    A[Cowrie] --> B[LiveJsonLogReader / JsonLogReader]
+    B --> C[CowrieAdapter]
+    C --> D[IngestionPipeline]
+    D --> E[LogProcessor]
+    E --> F[EventEnricher]
+    F --> G[DatasetBuilder]
+    G --> H[DatasetRecord]
+    H --> I[FeatureExtractor]
+    I --> J[FeatureMatrixBuilder]
+    J --> K[ModelManager]
+    K --> L[IsolationForest]
+    L --> M[AnomalyResult]
+    M --> N[AlertDispatcher]
+    N --> O[Alert]
+    O --> P[AlertStore]
+    P --> Q[(SQLite)]
+    Q --> R[AlertReporter]
+    R --> S[CLI]
+    M --> T[AnomalyEvaluator]
+
+    U[SecureTrapService]
+    U -. runtime orchestration .-> M
+    U -. runtime orchestration .-> N
+    U -. runtime orchestration .-> P
+```
+
+## 🔄 End-to-End Workflow
+
+1. **Ingestion** — `JsonLogReader` handles existing JSON/JSONL data; `LiveJsonLogReader` follows newly appended Cowrie log events.
+2. **Adaptation** — `CowrieAdapter` converts Cowrie-specific data into the standard `AttackEvent`.
+3. **Validation** — `IngestionPipeline` validates events before downstream processing.
+4. **Processing** — `LogProcessor` adds deterministic category, severity, and normalized command information.
+5. **Enrichment** — `EventEnricher` derives observable command features such as command length, URL-like content, IP-like content, file-path-like content, and shell metacharacters.
+6. **Dataset** — `DatasetBuilder` produces stable `DatasetRecord` objects; `DatasetWriter` and `DatasetManager` provide dataset handling.
+7. **Features** — `FeatureExtractor` and `FeatureMatrixBuilder` convert records into deterministic numeric model input.
+8. **Detection** — `ModelManager` fits an `IsolationForest` baseline and reuses it for later inference.
+9. **Results** — `AnomalyResult` preserves the model output and the source `DatasetRecord`.
+10. **Alerting** — `AlertDispatcher` converts only anomalous results into `Alert` objects.
+11. **Persistence** — `AlertStore` stores alerts in SQLite.
+12. **Reporting** — `AlertReporter` reads stored alerts and the CLI presents them to the operator.
+
+## 🤖 Machine Learning
+
+### Model
 
 ```text
-Cowrie
-   │
-   ▼
-LiveJsonLogReader / JsonLogReader
-   │
-   ▼
-CowrieAdapter
-   │
-   ▼
-IngestionPipeline
-   │
-   ▼
-LogProcessor
-   │
-   ▼
-EventEnricher
-   │
-   ▼
-DatasetBuilder / DatasetWriter / DatasetManager
-   │
-   ▼
-FeatureExtractor / FeatureMatrixBuilder
-   │
-   ▼
-ModelManager
-   │
-   ▼
+sklearn.ensemble.IsolationForest
+```
+
+SecureTrap uses IsolationForest for **unsupervised anomaly detection** because the current project does not have verified ground-truth attack labels.
+
+The system intentionally does not fabricate supervised labels or security verdicts.
+
+### Features
+
+The current feature vector is:
+
+```text
+command_length
+has_command
+has_url
+has_ip_address
+has_file_path
+has_shell_metacharacters
+```
+
+Feature order is fixed and deterministic.
+
+### Prediction Semantics
+
+IsolationForest output is preserved exactly:
+
+```text
+ 1  = inlier / normal
+-1  = outlier / anomaly
+```
+
+> `prediction = -1` means the model considered the observation an outlier relative to its fitted baseline. It does **not** prove that an attack occurred.
+
+Likewise, `prediction = 1` does not prove that an event was benign.
+
+### Model Lifecycle
+
+```text
+Historical baseline
+      ↓
+ModelManager.fit()
+      ↓
 IsolationForest
-   │
-   ▼
-AnomalyResult
-   │
-   ├──────────────► AnomalyEvaluator
-   │
-   ▼
-AlertDispatcher
-   │
-   ▼
-Alert
-   │
-   ▼
-AlertStore (SQLite)
-   │
-   ▼
-AlertReporter
-   │
-   ▼
-CLI
+      ↓
+ModelManager.predict()
+      ↓
+New AnomalyResult
+```
 
-Runtime orchestration:
-SecureTrapService
-coordinates live detection → alert dispatch → persistence
+The model is fitted once and is not automatically retrained on live traffic.
 
-The architecture isolates honeypot-specific behavior at the adapter layer. Future honeypots can be supported by implementing the existing BaseAdapter contract without changing the downstream processing pipeline.
+## 🚨 Alert Engine
 
-Workflow
-1. Ingestion
+### Alert
 
-JsonLogReader reads existing JSON/JSONL events in batch mode.
+`AlertBuilder` converts an `AnomalyResult` into an operator-friendly `Alert`.
 
-LiveJsonLogReader follows a JSON log file and yields newly appended events for live processing.
+Stored alert information includes:
 
-The reader layer only reads raw event data.
-
-2. Honeypot Adaptation
-
-CowrieAdapter converts Cowrie-specific raw fields into SecureTrap's standard AttackEvent representation.
-
-3. Validation
-
-IngestionPipeline passes adapted events through the event validation layer.
-
-Invalid events are reported through validation results and are not passed to downstream processing.
-
-4. Processing
-
-LogProcessor converts validated AttackEvent objects into ProcessedEvent objects.
-
-It adds deterministic metadata such as:
-
-category
-severity
-normalized command
-
-The original event remains preserved.
-
-5. Enrichment
-
-EventEnricher derives directly observable command properties, including:
-
-command presence
-command length
-URL-like content
-IP-address-like content
-file-path-like content
-shell metacharacters
-
-These features describe observable properties and do not directly infer attacker intent.
-
-6. Dataset Representation
-
-DatasetBuilder, DatasetWriter, and DatasetManager provide the stable DatasetRecord representation and CSV dataset handling.
-
-The dataset contains fields such as:
-
+```text
 timestamp
 source_ip
 session_id
 protocol
 honeypot
 event_type
-category
-severity
 command
-has_command
-command_length
-has_url
-has_ip_address
-has_file_path
-has_shell_metacharacters
-7. Feature Extraction
-
-FeatureExtractor converts a DatasetRecord into a deterministic numeric FeatureVector.
-
-FeatureMatrixBuilder combines multiple vectors into an ordered FeatureMatrix.
-
-Current features:
-
-command_length
-has_command
-has_url
-has_ip_address
-has_file_path
-has_shell_metacharacters
-
-Boolean features are represented as 0 or 1.
-
-8. Anomaly Detection
-
-ModelManager separates model fitting from inference.
-
-Baseline fitting:
-
-DatasetRecord(s)
-      ↓
-FeatureMatrix
-      ↓
-ModelManager.fit()
-      ↓
-IsolationForest
-
-Inference:
-
-new DatasetRecord(s)
-      ↓
-FeatureMatrix
-      ↓
-ModelManager.predict()
-      ↓
-AnomalyResult
-
-The model is fitted on baseline data and reused for later inference. Live events are not automatically used to retrain the model.
-
-Machine Learning Approach
-Model
-
-The current model is:
-
-sklearn.ensemble.IsolationForest
-
-This is an unsupervised anomaly detector.
-
-Why unsupervised?
-
-The current project does not have a verified ground-truth dataset identifying which observed events are definitively attacks.
-
-Using supervised learning without reliable labels would require assumptions or fabricated labels.
-
-SecureTrap therefore currently focuses on identifying observations that are unusual relative to a learned baseline.
-
-Prediction semantics
-
-The model's original semantics are preserved:
-
- 1  = inlier / normal
--1  = outlier / anomaly
-
-These values are not converted into security verdicts.
-
-In particular:
-
--1 != confirmed attack
-
-and:
-
-1 != proven benign activity
-
-is_anomaly=True means only that the underlying IsolationForest model identified the observation as an outlier relative to the fitted data.
-
-Model scores
-
-IsolationForest decision scores are retained as model outputs.
-
-They are:
-
-not probabilities
-not confidence percentages
-not attack likelihoods
-
-Generally, a lower score indicates greater deviation from the learned pattern.
-
-Anomaly Results
-
-AnomalyResult connects model output to the exact DatasetRecord that produced it.
-
-It contains:
-
-record
 prediction
 score
 is_anomaly
+```
 
-The original DatasetRecord is preserved by identity while the result remains in memory.
+### AlertDispatcher
 
-This makes each anomaly result traceable to its source event, session, timestamp, and command.
+Only `is_anomaly=True` results are dispatched as runtime alerts. Normal results do not become alerts.
 
-Evaluation
+### AlertStore
 
-AnomalyEvaluator provides descriptive statistics over AnomalyResult objects:
+`AlertStore` uses Python's standard-library `sqlite3` for local persistence.
 
+Default runtime database:
+
+```text
+data/securetrap_live_alerts.db
+```
+
+## ⚙️ Runtime
+
+`LiveDetectionPipeline` connects validated live events to the fitted model.
+
+`SecureTrapService` coordinates:
+
+```text
+LiveDetectionPipeline
+        ↓
+AlertDispatcher
+        ↓
+AlertStore
+```
+
+The service does not retrain the model or duplicate anomaly-filtering logic.
+
+## 📋 Reporting & CLI
+
+`AlertReporter` provides read-only summaries and recent-alert queries.
+
+### Summary
+
+```bash
+python -m core.cli.main summary
+```
+
+Example:
+
+```text
+Total alerts: 1
+Anomaly alerts: 1
+Normal alerts: 0
+Latest timestamp: 2026-08-30T11:42:08.966247Z
+```
+
+### Recent alerts
+
+```bash
+python -m core.cli.main alerts
+```
+
+### Limit results
+
+```bash
+python -m core.cli.main alerts --limit 5
+```
+
+### Custom database
+
+```bash
+python -m core.cli.main summary --db path/to/alerts.db
+python -m core.cli.main alerts --db path/to/alerts.db --limit 10
+```
+
+The CLI is read-only and delegates querying to `AlertReporter`.
+
+## 📊 Evaluation
+
+`AnomalyEvaluator` reports descriptive statistics:
+
+```text
 total_count
 normal_count
 anomaly_count
@@ -248,134 +227,62 @@ anomaly_rate
 min_score
 max_score
 mean_score
+```
 
-Because verified ground-truth labels are not currently available, SecureTrap does not claim supervised metrics such as:
+The current project does not claim accuracy, precision, recall, F1-score, or ROC-AUC because verified ground-truth labels are unavailable.
 
-accuracy
-precision
-recall
-F1-score
-ROC-AUC
+## ✅ Real-Time Verification
 
-These can be introduced later when trustworthy labels exist.
+SecureTrap has been tested against a real Cowrie deployment.
 
-Alerting
+A live command:
 
-AlertBuilder converts an AnomalyResult into an operator-friendly Alert.
+```text
+echo http://1.2.3.4
+```
 
-The alert preserves:
+produced:
 
-timestamp
-source_ip
-session_id
-protocol
-honeypot
-event_type
-command
-prediction
-score
-is_anomaly
+```text
+prediction = -1
+score ≈ -0.2116
+is_anomaly = True
+```
 
-The original AnomalyResult remains reachable through the alert.
+The anomaly was converted into an alert, persisted into SQLite, retrieved through `AlertReporter`, and displayed through the CLI.
 
-AlertDispatcher filters the inference stream so that only:
+This verifies the end-to-end prototype flow; it is not a claim of supervised detection accuracy.
 
-is_anomaly=True
+## 🧪 Testing
 
-results become runtime alerts.
+Run the complete test suite:
 
-Normal inference results are not dispatched as alerts.
+```bash
+python -m pytest tests/ -v
+```
 
-Alert Persistence
+The current verified regression suite contains **359 passing tests**.
 
-AlertStore provides persistent local storage using Python's standard-library sqlite3.
+Coverage includes:
 
-Current flow:
+- Event Engine and validation
+- Honeypot adaptation and ingestion
+- Log processing and enrichment
+- Dataset management
+- Feature extraction and matrices
+- IsolationForest detection
+- Model lifecycle and inference
+- Anomaly evaluation
+- Live detection
+- Alert generation and dispatch
+- SQLite persistence
+- Runtime service orchestration
+- Reporting
+- CLI behavior
 
-Alert
-  ↓
-AlertStore
-  ↓
-SQLite
+## 📁 Repository Structure
 
-The prototype alert database is:
-
-data/securetrap_live_alerts.db
-
-The persisted fields include:
-
-timestamp
-source_ip
-session_id
-protocol
-honeypot
-event_type
-command
-prediction
-score
-is_anomaly
-
-The storage layer is intentionally independent of AI inference and runtime event processing.
-
-Runtime Service
-
-SecureTrapService coordinates:
-
-LiveDetectionPipeline
-        ↓
-AlertDispatcher
-        ↓
-AlertStore
-
-Its responsibility is orchestration rather than implementation of detection logic.
-
-The service:
-
-processes the supplied event stream
-persists alerts emitted by AlertDispatcher
-does not train the model
-does not implement anomaly filtering itself
-Reporting
-
-AlertReporter provides read-only summaries and recent-alert queries.
-
-It exposes:
-
-total alerts
-anomaly alerts
-normal alerts
-latest timestamp
-recent alerts
-
-The reporter does not modify stored alerts.
-
-Command-Line Interface
-
-SecureTrap provides a simple read-only CLI.
-
-Show summary
-python -m core.cli.main summary
-
-Example:
-
-Total alerts: 1
-Anomaly alerts: 1
-Normal alerts: 0
-Latest timestamp: 2026-08-30T11:42:08.966247Z
-Show recent alerts
-python -m core.cli.main alerts
-Limit results
-python -m core.cli.main alerts --limit 5
-Use a custom database
-python -m core.cli.main summary --db path/to/alerts.db
-
-or:
-
-python -m core.cli.main alerts --db path/to/alerts.db --limit 10
-
-The CLI is read-only and delegates all alert querying to AlertReporter.
-
-Repository Structure
+```text
 SecureTrap/
 ├── core/
 │   ├── event_engine/
@@ -386,193 +293,102 @@ SecureTrap/
 │   ├── alert_engine/
 │   ├── runtime/
 │   └── cli/
-│
 ├── tests/
-│
-├── data/
-│   ├── securetrap_events.csv
-│   └── securetrap_live_alerts.db
-│
 ├── legacy/
 │   ├── train_model.py
 │   ├── ai_predict.py
 │   └── live_ai.py
-│
+├── data/
 ├── dataset.csv
 ├── test_logs.json
 ├── README.md
 └── .gitignore
-Legacy / Historical Implementation
+```
 
-The legacy/ directory contains SecureTrap's original prototype implementation.
+## 🕰️ Legacy Implementation
 
-These files are retained for historical reference:
+The original prototype used supervised command classification:
 
-legacy/
-├── train_model.py
-├── ai_predict.py
-└── live_ai.py
-
-The legacy implementation used:
-
+```text
 dataset.csv
     ↓
 CountVectorizer
     ↓
 MultinomialNB
-    ↓
-model.pkl / vectorizer.pkl
+```
 
-It was a supervised command-string classification prototype.
+Those historical scripts are preserved under `legacy/` and are not part of the current runtime.
 
-The legacy implementation is not part of the current runtime architecture and is not used by the modular components under core/.
+The current implementation instead uses deterministic features and `IsolationForest`-based unsupervised anomaly detection.
 
-The current SecureTrap system instead uses:
+The two approaches are not interchangeable, and no performance comparison is currently claimed.
 
-FeatureExtractor
-    ↓
-FeatureMatrixBuilder
-    ↓
-IsolationForest
-    ↓
-ModelManager
+## ⚠️ Current Limitations
 
-The two approaches are not interchangeable, and no performance comparison between them is currently claimed.
+- No verified ground-truth attack dataset
+- No supervised attack/benign classifier in the current runtime
+- Small deterministic feature set
+- No categorical/identifier encoding in the current feature matrix
+- No online model retraining
+- No trained-model persistence/versioning
+- Local SQLite storage is intended for the prototype
+- No external notifications
+- No web dashboard
+- No automated threat-intelligence enrichment
 
-The legacy scripts have been preserved without changing their internal behavior.
+## 🔮 Future Enhancements
 
-Real-Time Verification
+- Verified ground-truth dataset
+- Supervised evaluation when reliable labels exist
+- Additional honeypot adapters such as Dionaea
+- Session-level and temporal features
+- Additional observable command features
+- Explicit categorical encoding strategies
+- Model persistence and versioning
+- Email, Slack, or webhook notifications
+- Web dashboard
+- SIEM integration
+- Threat-intelligence enrichment
 
-The current implementation has been verified against a real Cowrie deployment.
+## 🔐 Security Notes
 
-A new live command:
+SecureTrap is intended for controlled cybersecurity research, experimentation, and educational environments.
 
-echo http://1.2.3.4
+An anomaly is not automatically a security incident. Operators should review the source IP, session, command, timestamp, event type, score, and surrounding session context before making a security decision.
 
-was processed through:
+## 👨‍💻 Development Approach
 
-LiveJsonLogReader
-→ IngestionPipeline
-→ LiveDetectionPipeline
-→ ModelManager
-→ AnomalyResult
-→ AlertDispatcher
-→ Alert
-→ AlertStore
-
-The observed IsolationForest output was:
-
-prediction = -1
-is_anomaly = True
-
-The generated alert was successfully persisted into SQLite and subsequently displayed through the CLI.
-
-This demonstrates working runtime integration, not supervised attack-detection accuracy.
-
-Testing
-
-SecureTrap contains isolated tests for each major component.
-
-Run the complete suite with:
-
-python -m pytest tests/ -v
-
-The test suite covers:
-
-event representation and validation
-honeypot adaptation
-JSON and live log reading
-ingestion
-processing and enrichment
-session aggregation
-dataset construction and persistence
-feature extraction
-feature matrix construction
-anomaly detection
-anomaly result mapping
-inference
-model lifecycle
-anomaly evaluation
-live detection
-alert creation
-alert dispatch
-SQLite alert persistence
-runtime service orchestration
-reporting
-CLI behavior
-
-The authoritative test count is whatever the current repository reports when pytest is executed.
-
-Current Limitations
-
-The current prototype intentionally has several limitations:
-
-No verified ground-truth attack dataset.
-No supervised attack/benign classifier in the current runtime.
-Small deterministic feature set.
-No categorical/identifier encoding in the current model features.
-No automatic online retraining.
-No model persistence/version management yet.
-Local SQLite storage is intended for the prototype.
-No external notification service.
-No web dashboard.
-No automated threat-intelligence enrichment.
-
-These limitations are explicit so that model outputs are not overstated.
-
-Future Enhancements
-
-Potential future directions include:
-
-Verified ground-truth dataset creation.
-Supervised evaluation when trustworthy labels are available.
-Additional honeypot adapters such as Dionaea.
-Expanded session-level and temporal features.
-Explicit categorical/identifier encoding strategies.
-Model persistence and versioning.
-External notification channels.
-Web-based operator dashboard.
-SIEM integration.
-Threat-intelligence enrichment.
-Development Philosophy
-
-SecureTrap follows:
-
+```text
 Design
    ↓
 Implementation
    ↓
 Unit Tests
    ↓
-Integration Test
+Integration Tests
    ↓
 Real-System Verification
    ↓
 Git Checkpoint
+```
 
-The project emphasizes clear boundaries between:
+The project emphasizes clear separation between data collection, processing, feature extraction, model inference, alert generation, persistence, reporting, and operator interaction.
 
-data collection
-processing
-feature extraction
-model inference
-alert generation
-persistence
-reporting
-operator interaction
-Disclaimer
+## 📄 Disclaimer
 
 SecureTrap is developed for cybersecurity research, experimentation, and educational purposes.
 
-An anomaly result is not a definitive statement that malicious activity occurred. Operators should review the associated event and session context before making security decisions.
+The current anomaly detector identifies observations that are unusual relative to its fitted baseline. It does not by itself establish that malicious activity occurred.
 
-Author
+Human investigation and contextual analysis are required before treating an anomaly as a confirmed security incident.
 
-Guduru Jagadeeshwar Reddy
+## 👤 Author
+
+**Guduru Jagadeeshwar Reddy**
 
 Cybersecurity Department
 Dayananda Sagar University, Bangalore
 
-Keywords
+---
 
-Cybersecurity, Honeypot, Cowrie, SecureTrap, Anomaly Detection, IsolationForest, Machine Learning, Security Monitoring, Log Analysis, Intrusion Detection, Python, SQLite
+**SecureTrap — Honeypot-driven cybersecurity monitoring with unsupervised anomaly detection.**
