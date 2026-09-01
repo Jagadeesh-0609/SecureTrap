@@ -32,6 +32,13 @@ from typing import Callable, List, Optional, Sequence, Union
 from core.ai_engine.model_manager import ModelManager
 from core.alert_engine.alert import Alert, AlertBuilder
 from core.alert_engine.alert_store import AlertStore
+from core.app.config import (
+    DEFAULT_DATABASE_PATH,
+    DEFAULT_DATASET_PATH,
+    DEFAULT_LOG_PATH,
+    DEFAULT_POLL_INTERVAL,
+    load_config,
+)
 from core.dataset_manager.builder import DatasetBuilder, DatasetRecord
 from core.honeypot_engine.cowrie_adapter import CowrieAdapter
 from core.honeypot_engine.ingestion import IngestionPipeline
@@ -41,11 +48,6 @@ from core.log_processor.processor import LogProcessor
 from core.runtime.alert_dispatch import AlertDispatcher
 from core.runtime.live_detection import LiveDetectionPipeline
 from core.runtime.service import SecureTrapService
-
-DEFAULT_DATASET_PATH = "data/securetrap_events.csv"
-DEFAULT_LOG_PATH = "/home/jagadeesh/cowrie/var/log/cowrie/cowrie.json"
-DEFAULT_DB_PATH = "data/securetrap_live_alerts.db"
-DEFAULT_POLL_INTERVAL = 0.5
 
 
 def _parse_bool(value: str) -> bool:
@@ -112,30 +114,37 @@ def _positive_float(value: str) -> float:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the application's argument parser."""
+    """Build the application's argument parser.
+
+    Each of --dataset/--log/--db/--poll-interval defaults to None here
+    on purpose: that's how main() tells "the user explicitly passed
+    this" apart from "fall back to the environment variable, then the
+    hard-coded default" — the actual precedence is resolved by
+    core.app.config.load_config(), not by argparse itself.
+    """
     parser = argparse.ArgumentParser(
         prog="python -m core.app.main",
         description="Run SecureTrap live anomaly monitoring.",
     )
     parser.add_argument(
         "--dataset",
-        default=DEFAULT_DATASET_PATH,
+        default=None,
         help=f"Baseline DatasetRecord CSV path (default: {DEFAULT_DATASET_PATH}).",
     )
     parser.add_argument(
         "--log",
-        default=DEFAULT_LOG_PATH,
+        default=None,
         help=f"Cowrie JSON log path to follow (default: {DEFAULT_LOG_PATH}).",
     )
     parser.add_argument(
         "--db",
-        default=DEFAULT_DB_PATH,
-        help=f"SQLite alert database path (default: {DEFAULT_DB_PATH}).",
+        default=None,
+        help=f"SQLite alert database path (default: {DEFAULT_DATABASE_PATH}).",
     )
     parser.add_argument(
         "--poll-interval",
         type=_positive_float,
-        default=DEFAULT_POLL_INTERVAL,
+        default=None,
         help=f"Seconds between log polls (default: {DEFAULT_POLL_INTERVAL}).",
     )
     return parser
@@ -252,23 +261,50 @@ def assemble_service(
 def main(argv: Optional[Sequence[str]] = None) -> int:
     """Application entry point: assemble and run SecureTrap live monitoring.
 
+    Configuration precedence (per value): explicit CLI argument >
+    environment variable (SECURETRAP_DATASET / SECURETRAP_LOG /
+    SECURETRAP_DB / SECURETRAP_POLL_INTERVAL) > hard-coded default.
+    Resolution itself is delegated entirely to
+    core.app.config.load_config().
+
     Args:
         argv: Command-line arguments, excluding the program name. If
             None, argparse reads from sys.argv[1:].
 
     Returns:
         Process exit code: 0 on success or a clean Ctrl+C stop,
-        non-zero if the baseline dataset is missing/empty or argument
-        parsing fails. Unexpected runtime errors are not caught here
-        and propagate to the caller.
+        non-zero if configuration is invalid or the baseline dataset
+        is missing/empty. Unexpected runtime errors are not caught
+        here and propagate to the caller.
     """
     parser = build_parser()
     args = parser.parse_args(argv)
 
     try:
-        service, ingestion_pipeline, baseline_records = assemble_service(args)
+        config = load_config(
+            dataset_path=args.dataset,
+            log_path=args.log,
+            database_path=args.db,
+            poll_interval=args.poll_interval,
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+
+    # assemble_service() takes an object exposing .dataset/.log/.db/
+    # .poll_interval (its existing, unchanged contract) — resolved_args
+    # carries AppConfig's already-precedence-resolved values into it.
+    resolved_args = argparse.Namespace(
+        dataset=str(config.dataset_path),
+        log=str(config.log_path),
+        db=str(config.database_path),
+        poll_interval=config.poll_interval,
+    )
+
+    try:
+        service, ingestion_pipeline, baseline_records = assemble_service(resolved_args)
     except FileNotFoundError:
-        print(f"Error: baseline dataset not found at {args.dataset!r}.", file=sys.stderr)
+        print(f"Error: baseline dataset not found at {str(config.dataset_path)!r}.", file=sys.stderr)
         return 1
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -276,9 +312,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     print("SecureTrap live monitoring started.")
     print(f"Baseline records: {len(baseline_records)}")
-    print(f"Log file: {args.log}")
-    print(f"Alert database: {args.db}")
-    print(f"Poll interval: {args.poll_interval}")
+    print(f"Log file: {config.log_path}")
+    print(f"Alert database: {config.database_path}")
+    print(f"Poll interval: {config.poll_interval}")
     print("Press Ctrl+C to stop.")
 
     try:
