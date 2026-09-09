@@ -19,11 +19,13 @@ DEFAULT_DATASET_PATH = "data/securetrap_events.csv"
 DEFAULT_LOG_PATH = "/home/jagadeesh/cowrie/var/log/cowrie/cowrie.json"
 DEFAULT_DATABASE_PATH = "data/securetrap_live_alerts.db"
 DEFAULT_POLL_INTERVAL = 0.5
+DEFAULT_LOG_FILE_PATH = "logs/securetrap.log"
 
 ENV_DATASET = "SECURETRAP_DATASET"
 ENV_LOG = "SECURETRAP_LOG"
 ENV_DB = "SECURETRAP_DB"
 ENV_POLL_INTERVAL = "SECURETRAP_POLL_INTERVAL"
+ENV_LOG_FILE = "SECURETRAP_LOG_FILE"
 
 
 @dataclass
@@ -37,12 +39,16 @@ class AppConfig:
         poll_interval: Seconds between log polls. Always > 0 — this is
             enforced here so an AppConfig can never exist in an
             invalid state, regardless of how its values were sourced.
+        log_file: Path to SecureTrap's own rotating application log
+            file. Distinct from `log_path`, which is the Cowrie log
+            being monitored, not SecureTrap's own output.
     """
 
     dataset_path: Path
     log_path: Path
     database_path: Path
     poll_interval: float
+    log_file: Path = Path(DEFAULT_LOG_FILE_PATH)
 
     def __post_init__(self) -> None:
         if self.poll_interval <= 0:
@@ -55,6 +61,7 @@ def load_config(
     log_path: Optional[Union[str, Path]] = None,
     database_path: Optional[Union[str, Path]] = None,
     poll_interval: Optional[float] = None,
+    log_file: Optional[Union[str, Path]] = None,
     env: Optional[Mapping[str, str]] = None,
 ) -> AppConfig:
     """Resolve an AppConfig from explicit values, environment, then defaults.
@@ -76,6 +83,10 @@ def load_config(
         poll_interval: Explicit override for the poll interval. If
             None, falls back to SECURETRAP_POLL_INTERVAL, then
             DEFAULT_POLL_INTERVAL.
+        log_file: Explicit override for SecureTrap's own application
+            log file path (e.g. a CLI --log-file value). If None,
+            falls back to SECURETRAP_LOG_FILE, then
+            DEFAULT_LOG_FILE_PATH.
         env: Mapping to read environment variables from. Defaults to
             os.environ. Exposed as a parameter purely for testing.
 
@@ -84,7 +95,7 @@ def load_config(
 
     Raises:
         ValueError: If the resolved poll_interval is not a valid
-            positive number.
+            positive number, or the resolved log_file is empty.
     """
     environment: Mapping[str, str] = env if env is not None else os.environ
 
@@ -95,6 +106,14 @@ def load_config(
     resolved_database = (
         database_path if database_path is not None else environment.get(ENV_DB, DEFAULT_DATABASE_PATH)
     )
+    resolved_log_file = (
+        log_file if log_file is not None else environment.get(ENV_LOG_FILE, DEFAULT_LOG_FILE_PATH)
+    )
+    if not str(resolved_log_file).strip():
+        # Checked here, on the raw string, because Path("") silently
+        # normalizes to Path(".") — by the time it's wrapped in Path,
+        # "empty" is no longer distinguishable from "current directory".
+        raise ValueError("log_file must not be empty.")
 
     if poll_interval is not None:
         resolved_poll_interval = float(poll_interval)
@@ -108,4 +127,5 @@ def load_config(
         log_path=Path(resolved_log),
         database_path=Path(resolved_database),
         poll_interval=resolved_poll_interval,
+        log_file=Path(resolved_log_file),
     )

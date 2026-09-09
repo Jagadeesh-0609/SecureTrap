@@ -16,7 +16,7 @@ become alerts, and this module never inspects `is_anomaly`.
 
 Run with:
     python -m core.app.main [--dataset PATH] [--log PATH] [--db PATH]
-                             [--poll-interval FLOAT]
+                             [--poll-interval FLOAT] [--log-file PATH]
 
 This is separate from the existing read-only reporting CLI
 (`python -m core.cli.main summary|alerts`): this module *runs* live
@@ -25,6 +25,7 @@ monitoring; that one only *reads* what has already been persisted.
 
 import argparse
 import csv
+import logging
 import sys
 from pathlib import Path
 from typing import Callable, List, Optional, Sequence, Union
@@ -35,10 +36,12 @@ from core.alert_engine.alert_store import AlertStore
 from core.app.config import (
     DEFAULT_DATABASE_PATH,
     DEFAULT_DATASET_PATH,
+    DEFAULT_LOG_FILE_PATH,
     DEFAULT_LOG_PATH,
     DEFAULT_POLL_INTERVAL,
     load_config,
 )
+from core.app.logging_config import LOGGER_NAME, configure_logging
 from core.dataset_manager.builder import DatasetBuilder, DatasetRecord
 from core.honeypot_engine.cowrie_adapter import CowrieAdapter
 from core.honeypot_engine.ingestion import IngestionPipeline
@@ -147,6 +150,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=f"Seconds between log polls (default: {DEFAULT_POLL_INTERVAL}).",
     )
+    parser.add_argument(
+        "--log-file",
+        default=None,
+        help=f"SecureTrap's own application log file path (default: {DEFAULT_LOG_FILE_PATH}).",
+    )
     return parser
 
 
@@ -157,11 +165,18 @@ class _PrintingAlertStore:
     already relies on, so SecureTrapService itself needs no changes.
     All persistence behavior (schema, SQL, directory creation) is
     delegated entirely to the wrapped AlertStore; this class adds only
-    an operator-facing print after a successful save.
+    an operator-facing print (and a corresponding log entry) after a
+    successful save.
 
     It never inspects `is_anomaly` or filters anything — by the time
     SecureTrapService calls save(), AlertDispatcher has already
     ensured only anomalous results reached this point.
+
+    The terminal print includes the full alert, including the raw
+    command. The application *log*, however, deliberately omits the
+    command: honeypot commands are attacker-supplied and may contain
+    credentials or other sensitive strings, and the durable log file
+    is not the right place for that content.
     """
 
     def __init__(self, alert_store: AlertStore) -> None:
@@ -169,6 +184,7 @@ class _PrintingAlertStore:
 
     def save(self, alert: Alert) -> int:
         alert_id = self._alert_store.save(alert)
+
         print(
             "ALERT | "
             f"timestamp={alert.timestamp} | "
@@ -178,6 +194,20 @@ class _PrintingAlertStore:
             f"command={alert.command!r} | "
             f"prediction={alert.prediction} | "
             f"score={alert.score}"
+        )
+        # Logged only after the save above has already succeeded — a
+        # failed save raises before this line is ever reached, so no
+        # false "persisted" record can end up in the log. The command
+        # field is intentionally excluded here (see class docstring).
+        logging.getLogger(LOGGER_NAME).info(
+            "ALERT | "
+            "timestamp=%s | source_ip=%s | session=%s | event=%s | prediction=%s | score=%s",
+            alert.timestamp,
+            alert.source_ip,
+            alert.session_id,
+            alert.event_type,
+            alert.prediction,
+            alert.score,
         )
         return alert_id
 
@@ -263,8 +293,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     Configuration precedence (per value): explicit CLI argument >
     environment variable (SECURETRAP_DATASET / SECURETRAP_LOG /
-    SECURETRAP_DB / SECURETRAP_POLL_INTERVAL) > hard-coded default.
-    Resolution itself is delegated entirely to
+    SECURETRAP_DB / SECURETRAP_POLL_INTERVAL / SECURETRAP_LOG_FILE) >
+    hard-coded default. Resolution itself is delegated entirely to
     core.app.config.load_config().
 
     Args:
@@ -274,8 +304,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     Returns:
         Process exit code: 0 on success or a clean Ctrl+C stop,
         non-zero if configuration is invalid or the baseline dataset
-        is missing/empty. Unexpected runtime errors are not caught
-        here and propagate to the caller.
+        is missing/empty. Unexpected runtime errors are logged (with
+        exception details) and then re-raised — not caught here.
     """
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -286,10 +316,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             log_path=args.log,
             database_path=args.db,
             poll_interval=args.poll_interval,
+            log_file=args.log_file,
         )
     except ValueError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
+
+    logger = configure_logging(config.log_file)
+    logger.info("SecureTrap application starting.")
 
     # assemble_service() takes an object exposing .dataset/.log/.db/
     # .poll_interval (its existing, unchanged contract) — resolved_args
@@ -316,12 +350,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     print(f"Alert database: {config.database_path}")
     print(f"Poll interval: {config.poll_interval}")
     print("Press Ctrl+C to stop.")
+    logger.info(
+        "SecureTrap initialization successful. baseline_records=%d cowrie_log=%s "
+        "alert_database=%s poll_interval=%s",
+        len(baseline_records),
+        config.log_path,
+        config.database_path,
+        config.poll_interval,
+    )
 
     try:
         service.run(ingestion_pipeline.process())
     except KeyboardInterrupt:
         print("SecureTrap monitoring stopped.")
+        logger.info("SecureTrap monitoring stopped.")
         return 0
+    except Exception:
+        # Logged with full exception details, then re-raised unchanged
+        # — this never swallows the error, it only records it first.
+        logger.exception("Unexpected error during SecureTrap live monitoring.")
+        raise
 
     return 0
 
