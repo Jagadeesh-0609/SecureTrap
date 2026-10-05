@@ -20,7 +20,7 @@ import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Optional, Union
+from typing import Any, Iterator, Optional, Tuple, Union
 
 DEFAULT_POLL_INTERVAL = 1.0
 
@@ -51,9 +51,14 @@ class LiveJsonLogReader:
     numbers, etc.) are skipped rather than yielded. Malformed lines
     are additionally recorded in `malformed_lines` for debugging.
 
-    Basic truncation/rotation is handled: if the file shrinks below
-    the reader's current read position, the reader resets to the
-    start of the file instead of crashing or getting stuck.
+    File replacement (e.g. log rotation) and in-place truncation are
+    both handled: replacement is detected via a change in filesystem
+    identity (device + inode), which is caught regardless of whether
+    the replacement file is smaller, larger, or the same size as the
+    previous read position; in-place truncation of the same file is
+    detected via the existing size comparison. Either way, reading
+    resets to the start of the (new) file instead of crashing or
+    getting stuck.
     """
 
     def __init__(
@@ -78,8 +83,14 @@ class LiveJsonLogReader:
         self.poll_interval = poll_interval
         self.malformed_lines: list[MalformedLine] = []
 
-        self._position = self.path.stat().st_size
+        stat_result = self.path.stat()
+        self._position = stat_result.st_size
         self._buffer = ""
+        # (device, inode) identifies the underlying file itself, not
+        # just its path — a replacement file at the same path gets a
+        # different identity, which is what lets rotation/replacement
+        # be detected independently of file size.
+        self._file_identity: Optional[Tuple[int, int]] = (stat_result.st_dev, stat_result.st_ino)
 
     def follow(self, max_polls: Optional[int] = None) -> Iterator[dict[str, Any]]:
         """Yield newly appended JSON objects as they appear in the file.
@@ -115,18 +126,38 @@ class LiveJsonLogReader:
             time.sleep(self.poll_interval)
 
     def _reset_on_truncation(self) -> None:
-        """Detect basic truncation/rotation and reset the read position.
+        """Detect file replacement/rotation or in-place truncation.
 
-        If the file is currently smaller than where this reader last
-        left off, it must have been truncated or replaced, so reading
-        resumes from the start rather than seeking past the new end.
+        Replacement (including log rotation) is detected by a change
+        in filesystem identity (device + inode) rather than by size
+        alone, so it is caught even when the replacement file is
+        larger than, or the same size as, the previous read position —
+        a case a size-only comparison would miss entirely. When the
+        identity changes, reading resets to the start of the new file
+        and any partial line buffered from the old file is discarded.
+
+        In-place truncation — the file keeps the same identity but
+        shrinks (e.g. via `> file`) — is still detected via the
+        existing size comparison.
+
+        A temporarily missing file is left untouched: neither the
+        stored identity, position, nor buffer are changed, so reading
+        simply resumes once the file reappears.
         """
         try:
-            current_size = self.path.stat().st_size
+            stat_result = self.path.stat()
         except FileNotFoundError:
             return
 
-        if current_size < self._position:
+        current_identity = (stat_result.st_dev, stat_result.st_ino)
+
+        if current_identity != self._file_identity:
+            self._file_identity = current_identity
+            self._position = 0
+            self._buffer = ""
+            return
+
+        if stat_result.st_size < self._position:
             self._position = 0
             self._buffer = ""
 
