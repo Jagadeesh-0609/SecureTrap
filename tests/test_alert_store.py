@@ -7,6 +7,7 @@ only.
 """
 
 import ast
+import dataclasses
 import inspect
 import sqlite3
 
@@ -14,7 +15,7 @@ import pytest
 
 from core.ai_engine.anomaly_result import AnomalyResult
 from core.alert_engine.alert import Alert
-from core.alert_engine.alert_store import AlertStore
+from core.alert_engine.alert_store import AlertStatistics, AlertStore, StoredAlert
 from core.dataset_manager.builder import DatasetRecord
 
 
@@ -289,6 +290,159 @@ def test_database_operations_do_not_modify_the_input_alert(tmp_path):
     assert alert.command == original_command
     assert alert.prediction == original_prediction
     assert alert.score == original_score
+
+
+# --------------------------------------------------------------------
+# StoredAlert / get_stored_by_id / list_recent_stored (Phase 8.0)
+# --------------------------------------------------------------------
+
+
+def test_stored_alert_holds_the_given_id_and_alert():
+    alert = _make_alert(command="pwd")
+
+    stored = StoredAlert(id=7, alert=alert)
+
+    assert stored.id == 7
+    assert stored.alert is alert
+
+
+def test_stored_alert_has_exactly_id_and_alert_fields():
+    assert {field.name for field in dataclasses.fields(StoredAlert)} == {"id", "alert"}
+
+
+def test_stored_alert_is_immutable():
+    stored = StoredAlert(id=1, alert=_make_alert())
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        stored.id = 2
+
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        stored.alert = _make_alert(command="other")
+
+
+def test_alert_itself_still_has_no_id_attribute(tmp_path):
+    store = AlertStore(tmp_path / "alerts.db")
+    alert_id = store.save(_make_alert())
+
+    assert not hasattr(store.get_by_id(alert_id), "id")
+    assert not hasattr(store.get_stored_by_id(alert_id).alert, "id")
+    assert "id" not in {field.name for field in dataclasses.fields(Alert)}
+
+
+def test_get_stored_by_id_returns_the_id_from_save_and_the_matching_alert(tmp_path):
+    store = AlertStore(tmp_path / "alerts.db")
+    store.save(_make_alert(command="other"))
+    alert_id = store.save(_make_alert(command="whoami", prediction=-1, score=-0.42))
+
+    stored = store.get_stored_by_id(alert_id)
+
+    assert isinstance(stored, StoredAlert)
+    assert stored.id == alert_id
+    assert isinstance(stored.alert, Alert)
+    assert stored.alert.command == "whoami"
+    assert stored.alert.prediction == -1
+    assert stored.alert.score == pytest.approx(-0.42)
+    assert stored.alert.is_anomaly is True
+
+
+def test_get_stored_by_id_matches_get_by_id(tmp_path):
+    store = AlertStore(tmp_path / "alerts.db")
+    alert_id = store.save(_make_alert(command="uname -a", prediction=-1, score=-0.3))
+
+    assert store.get_stored_by_id(alert_id).alert == store.get_by_id(alert_id)
+
+
+def test_get_stored_by_id_returns_none_for_unknown_id(tmp_path):
+    store = AlertStore(tmp_path / "alerts.db")
+    assert store.get_stored_by_id(999) is None
+
+    alert_id = store.save(_make_alert())
+    assert store.get_stored_by_id(alert_id + 1) is None
+
+
+def test_list_recent_stored_returns_stored_alerts_newest_first(tmp_path):
+    store = AlertStore(tmp_path / "alerts.db")
+    saved_ids = [store.save(_make_alert(command=c)) for c in ["first", "second", "third"]]
+
+    recent = store.list_recent_stored()
+
+    assert all(isinstance(item, StoredAlert) for item in recent)
+    assert [item.alert.command for item in recent] == ["third", "second", "first"]
+    assert [item.id for item in recent] == list(reversed(saved_ids))
+
+
+def test_list_recent_stored_ids_match_the_database_records(tmp_path):
+    db_path = tmp_path / "alerts.db"
+    store = AlertStore(db_path)
+    for command in ["a", "b", "c", "d"]:
+        store.save(_make_alert(command=command))
+
+    connection = sqlite3.connect(db_path)
+    try:
+        rows = connection.execute(
+            "SELECT id, command FROM alerts ORDER BY id DESC"
+        ).fetchall()
+    finally:
+        connection.close()
+
+    recent = store.list_recent_stored()
+
+    assert [(item.id, item.alert.command) for item in recent] == rows
+
+
+def test_list_recent_stored_respects_limit(tmp_path):
+    store = AlertStore(tmp_path / "alerts.db")
+    saved_ids = [store.save(_make_alert(command=c)) for c in ["a", "b", "c", "d", "e"]]
+
+    recent = store.list_recent_stored(limit=2)
+
+    assert len(recent) == 2
+    assert [item.alert.command for item in recent] == ["e", "d"]
+    assert [item.id for item in recent] == [saved_ids[4], saved_ids[3]]
+    # A limit larger than the store returns everything, newest first.
+    assert len(store.list_recent_stored(limit=50)) == 5
+
+
+def test_list_recent_stored_invalid_limit_raises_value_error(tmp_path):
+    store = AlertStore(tmp_path / "alerts.db")
+    store.save(_make_alert())
+
+    with pytest.raises(ValueError):
+        store.list_recent_stored(limit=0)
+
+    with pytest.raises(ValueError):
+        store.list_recent_stored(limit=-5)
+
+
+def test_list_recent_stored_on_empty_store_returns_empty_list(tmp_path):
+    store = AlertStore(tmp_path / "alerts.db")
+    assert store.list_recent_stored() == []
+
+
+def test_list_recent_stored_has_same_alerts_and_order_as_list_recent(tmp_path):
+    store = AlertStore(tmp_path / "alerts.db")
+    for index in range(6):
+        store.save(_make_alert(command=f"cmd-{index}", prediction=-1 if index % 2 else 1))
+
+    for limit in (1, 3, 6, 100):
+        assert [item.alert for item in store.list_recent_stored(limit=limit)] == store.list_recent(
+            limit=limit
+        )
+
+
+def test_existing_read_methods_keep_their_original_return_types(tmp_path):
+    store = AlertStore(tmp_path / "alerts.db")
+    alert_id = store.save(_make_alert(command="pwd"))
+    store.save(_make_alert(command="ls"))
+
+    assert isinstance(alert_id, int)
+    assert type(store.get_by_id(alert_id)) is Alert
+    assert store.get_by_id(999) is None
+    recent = store.list_recent()
+    assert isinstance(recent, list)
+    assert all(type(item) is Alert for item in recent)
+    assert isinstance(store.count(), int)
+    assert isinstance(store.get_statistics(), AlertStatistics)
 
 
 def test_no_model_ai_or_logging_dependencies_are_imported():

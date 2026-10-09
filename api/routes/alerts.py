@@ -4,17 +4,22 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from core.alert_engine.alert import Alert
-from core.alert_engine.alert_store import AlertStore
+from core.alert_engine.alert_store import AlertStore, StoredAlert
 from api.dependencies import get_alert_store
 from api.schemas import AlertResponse, AlertSummaryResponse
 
 router = APIRouter(prefix="/api/v1", tags=["alerts"])
 
 
-def _to_response(alert: Alert) -> AlertResponse:
-    """Map an Alert to the flat AlertResponse shared by list and detail."""
+def _to_response(stored: StoredAlert) -> AlertResponse:
+    """Map a StoredAlert to the flat AlertResponse shared by list and detail.
+
+    The persisted `id` comes from the StoredAlert wrapper; every other
+    field is copied unchanged from the wrapped Alert.
+    """
+    alert = stored.alert
     return AlertResponse(
+        id=stored.id,
         timestamp=alert.timestamp,
         source_ip=alert.source_ip,
         session_id=alert.session_id,
@@ -35,13 +40,15 @@ def list_alerts(
 ) -> List[AlertResponse]:
     """List the most recently persisted alerts, newest first.
 
-    Delegates entirely to AlertStore.list_recent() — this route
+    Delegates entirely to AlertStore.list_recent_stored() — this route
     contains no SQL and duplicates none of AlertStore's internals.
+    Each item includes the persisted alert `id`, usable with
+    GET /api/v1/alerts/{alert_id}.
     Returns an empty list, not an error, when no alerts are stored.
     `limit` must be positive; FastAPI/Pydantic reject anything else
     with a 422 before this function ever runs.
     """
-    return [_to_response(alert) for alert in alert_store.list_recent(limit=limit)]
+    return [_to_response(stored) for stored in alert_store.list_recent_stored(limit=limit)]
 
 
 # NOTE: this route MUST be registered before "/alerts/{alert_id}".
@@ -83,11 +90,12 @@ def get_alert(
 ) -> AlertResponse:
     """Return one persisted alert by its id.
 
-    Delegates to AlertStore.get_by_id() and reuses the same flat
-    AlertResponse as the list endpoint. An unknown id yields HTTP 404
-    with a generic message — no database internals are exposed.
+    Delegates to AlertStore.get_stored_by_id() and reuses the same flat
+    AlertResponse as the list endpoint, including the same `id`. An
+    unknown id yields HTTP 404 with a generic message — no database
+    internals are exposed.
     """
-    alert = alert_store.get_by_id(alert_id)
-    if alert is None:
+    stored = alert_store.get_stored_by_id(alert_id)
+    if stored is None:
         raise HTTPException(status_code=404, detail="Alert not found.")
-    return _to_response(alert)
+    return _to_response(stored)

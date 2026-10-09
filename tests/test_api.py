@@ -81,6 +81,7 @@ def api(tmp_path):
 
 
 ALERT_FIELDS = {
+    "id",
     "timestamp",
     "source_ip",
     "session_id",
@@ -224,6 +225,7 @@ def test_alert_response_fields_match_alert_model_exactly(api):
     payload = response.json()[0]
 
     assert set(payload.keys()) == {
+        "id",
         "timestamp",
         "source_ip",
         "session_id",
@@ -299,7 +301,8 @@ def test_alert_detail_has_exactly_the_alert_response_fields(api):
 
     payload = client.get(f"/api/v1/alerts/{alert_id}").json()
 
-    # Same flat shape as the list endpoint — and no id / DB internals.
+    # Same flat shape as the list endpoint, including the persisted id —
+    # and nothing else (no result chain, no other DB internals).
     assert set(payload.keys()) == ALERT_FIELDS
 
 
@@ -339,6 +342,117 @@ def test_alert_detail_non_integer_id_returns_422(api):
     response = client.get("/api/v1/alerts/not-a-number")
 
     assert response.status_code == 422
+
+
+# --------------------------------------------------------------------
+# Persisted alert id (Phase 8.0)
+# --------------------------------------------------------------------
+
+
+def test_list_response_includes_an_integer_id_for_every_alert(api):
+    client, store = api
+    _seed_mixed_alerts(store)
+
+    payload = client.get("/api/v1/alerts").json()
+
+    assert len(payload) == 5
+    for item in payload:
+        assert isinstance(item["id"], int)
+        assert not isinstance(item["id"], bool)
+
+
+def test_list_ids_match_the_ids_assigned_when_alerts_were_saved(api):
+    client, store = api
+    saved_ids = _seed_mixed_alerts(store)
+
+    payload = client.get("/api/v1/alerts").json()
+
+    # The list is newest-first, so ids come back in reverse save order,
+    # and each id sits on the alert it was assigned to.
+    assert [item["id"] for item in payload] == list(reversed(saved_ids))
+    assert [item["command"] for item in payload] == ["e", "d", "c", "b", "a"]
+
+
+def test_list_ids_are_unique(api):
+    client, store = api
+    for _ in range(10):
+        store.save(_make_alert(command="identical"))
+
+    ids = [item["id"] for item in client.get("/api/v1/alerts").json()]
+
+    assert len(ids) == len(set(ids)) == 10
+
+
+def test_list_limit_still_returns_the_newest_alerts_with_their_ids(api):
+    client, store = api
+    saved_ids = _seed_mixed_alerts(store)
+
+    payload = client.get("/api/v1/alerts", params={"limit": 2}).json()
+
+    assert [item["id"] for item in payload] == [saved_ids[-1], saved_ids[-2]]
+    assert [item["command"] for item in payload] == ["e", "d"]
+
+
+def test_detail_returns_the_requested_id_and_its_alert(api):
+    client, store = api
+    saved_ids = _seed_mixed_alerts(store)
+
+    detail = client.get(f"/api/v1/alerts/{saved_ids[2]}").json()
+
+    assert detail["id"] == saved_ids[2]
+    assert detail["command"] == "c"
+    assert detail["prediction"] == -1
+    assert detail["score"] == pytest.approx(-0.6)
+
+
+def test_id_from_list_response_retrieves_the_matching_detail_response(api):
+    # The dashboard's actual flow: take an id off a list row, fetch the
+    # detail for it, and get back exactly the same alert.
+    client, store = api
+    _seed_mixed_alerts(store)
+
+    listed = client.get("/api/v1/alerts").json()
+
+    assert len(listed) == 5
+    for item in listed:
+        detail_response = client.get(f"/api/v1/alerts/{item['id']}")
+        assert detail_response.status_code == 200
+        assert detail_response.json() == item
+
+
+def test_alerts_with_identical_content_are_distinguished_by_id(api):
+    client, store = api
+    first_id = store.save(_make_alert(command="same", prediction=1, score=0.1))
+    second_id = store.save(_make_alert(command="same", prediction=1, score=0.1))
+
+    first = client.get(f"/api/v1/alerts/{first_id}").json()
+    second = client.get(f"/api/v1/alerts/{second_id}").json()
+
+    assert first_id != second_id
+    assert first["id"] == first_id
+    assert second["id"] == second_id
+
+
+def test_detail_for_an_id_that_does_not_exist_is_still_a_generic_404(api):
+    client, store = api
+    saved_ids = _seed_mixed_alerts(store)
+
+    response = client.get(f"/api/v1/alerts/{max(saved_ids) + 1000}")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Alert not found."}
+
+
+def test_summary_payload_is_unchanged_by_the_id_field(api):
+    client, store = api
+    _seed_mixed_alerts(store)
+
+    payload = client.get("/api/v1/alerts/summary").json()
+
+    assert set(payload.keys()) == SUMMARY_FIELDS
+    assert "id" not in payload
+    assert payload["total_alerts"] == 5
+    assert payload["anomaly_count"] == 2
 
 
 # --------------------------------------------------------------------

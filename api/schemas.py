@@ -1,9 +1,17 @@
 """Pydantic response schemas for the SecureTrap API.
 
-These mirror existing domain objects (Alert) field-for-field — no
-renaming, no reinterpretation, no new fields invented here. This
-module owns presentation shape only; AlertStore and Alert remain the
-single source of truth for what an alert actually contains.
+This module defines API presentation schemas only. It performs no
+detection and does not reinterpret model predictions.
+
+AlertResponse combines two things that both come from persisted data:
+the storage identifier (`id`) supplied by AlertStore, and the
+persisted alert fields from the Alert domain model. `id` is storage
+metadata — it is not a field on the Alert domain model. The
+remaining alert field names and semantics are unchanged from
+Alert's own.
+
+AlertSummaryResponse represents aggregate statistics over persisted
+records only.
 """
 
 from typing import Dict, Optional
@@ -18,18 +26,27 @@ class HealthResponse(BaseModel):
 
 
 class AlertResponse(BaseModel):
-    """Response body for one alert in GET /api/v1/alerts.
+    """Response body for one alert in GET /api/v1/alerts and GET /api/v1/alerts/{alert_id}.
 
-    A field-for-field mirror of core.alert_engine.alert.Alert's flat
-    fields, excluding `result` — which carries the full internal
-    AnomalyResult/DatasetRecord chain and isn't meant to cross the API
-    boundary as-is. Field names and semantics are identical to Alert's
-    own: `prediction` and `is_anomaly` still mean exactly what
-    IsolationForest produced (1 = inlier/normal, -1 = outlier/anomaly;
-    is_anomaly is not a confirmed-attack judgment), never relabeled
-    here.
+    Mirrors core.alert_engine.alert.Alert's flat fields, excluding
+    `result` — which carries the full internal AnomalyResult /
+    DatasetRecord chain and isn't meant to cross the API boundary
+    as-is — plus the stored alert's `id`. Field names and semantics
+    are identical to Alert's own: `prediction` and `is_anomaly` still
+    mean exactly what IsolationForest produced (1 = inlier/normal,
+    -1 = outlier/anomaly; is_anomaly is not a confirmed-attack
+    judgment), never relabeled here.
+
+    `id` is the stable persisted alert identifier: the alert's
+    database ID, the same value used in GET /api/v1/alerts/{alert_id}
+    to retrieve this individual alert. It is storage metadata only —
+    not an AI or security label — and it reflects the order alerts
+    were persisted, not their event `timestamp`. It is unique within
+    one alert database and should not be assumed meaningful across
+    different databases.
     """
 
+    id: int
     timestamp: str
     source_ip: str
     session_id: str

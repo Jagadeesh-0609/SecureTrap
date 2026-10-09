@@ -80,6 +80,29 @@ _UNKNOWN_CATEGORY = "unknown"
 _UNKNOWN_SEVERITY = "unknown"
 
 
+@dataclass(frozen=True)
+class StoredAlert:
+    """An Alert together with the database-generated ID it was stored under.
+
+    Keeps storage identity separate from the domain model: Alert
+    itself has no `id` field and never gains one. This wrapper exists
+    so callers that need a stable handle for a persisted alert (for
+    example the API's detail endpoint) can get it without changing
+    Alert or the existing AlertStore read methods.
+
+    Attributes:
+        id: The row ID SQLite assigned when the alert was saved — the
+            same value save() returned. Storage metadata only; it is
+            not an AI or security label, and it reflects insertion
+            order, not the alert's event timestamp.
+        alert: The reconstructed Alert, exactly as get_by_id() /
+            list_recent() would return it for that row.
+    """
+
+    id: int
+    alert: Alert
+
+
 @dataclass
 class AlertStatistics:
     """Aggregate statistics over every alert persisted in an AlertStore.
@@ -255,6 +278,60 @@ class AlertStore:
 
         return [self._row_to_alert(row) for row in rows]
 
+    def get_stored_by_id(self, alert_id: int) -> Optional[StoredAlert]:
+        """Retrieve a stored Alert together with its database ID.
+
+        Same lookup as get_by_id(), but the result keeps the row ID
+        alongside the Alert. get_by_id() itself is unchanged.
+
+        Args:
+            alert_id: The ID returned by a previous save() call.
+
+        Returns:
+            A StoredAlert whose `id` is the requested row ID and whose
+            `alert` is the reconstructed Alert, or None if no row with
+            that ID exists.
+        """
+        connection = sqlite3.connect(self._path)
+        try:
+            row = connection.execute(_SELECT_BY_ID_SQL, (alert_id,)).fetchone()
+        finally:
+            connection.close()
+
+        if row is None:
+            return None
+
+        return self._row_to_stored_alert(row)
+
+    def list_recent_stored(self, limit: int = 100) -> List[StoredAlert]:
+        """List the most recently saved alerts with their database IDs.
+
+        Same query, ordering and limit semantics as list_recent() —
+        newest first by insertion id — but each Alert keeps its row ID
+        in a StoredAlert wrapper. list_recent() itself is unchanged.
+
+        Args:
+            limit: Maximum number of alerts to return. Must be a
+                positive integer. Defaults to 100.
+
+        Returns:
+            Up to `limit` StoredAlerts, ordered by insertion id
+            descending (newest first).
+
+        Raises:
+            ValueError: If `limit` is not a positive integer.
+        """
+        if limit <= 0:
+            raise ValueError(f"limit must be a positive integer, got {limit!r}.")
+
+        connection = sqlite3.connect(self._path)
+        try:
+            rows = connection.execute(_SELECT_RECENT_SQL, (limit,)).fetchall()
+        finally:
+            connection.close()
+
+        return [self._row_to_stored_alert(row) for row in rows]
+
     def count(self) -> int:
         """Return the total number of stored alert rows."""
         connection = sqlite3.connect(self._path)
@@ -367,3 +444,14 @@ class AlertStore:
             score=float(score),
             is_anomaly=bool(is_anomaly),
         )
+
+    @staticmethod
+    def _row_to_stored_alert(row) -> StoredAlert:
+        """Pair a stored row's database ID with its reconstructed Alert.
+
+        The Alert itself is built by _row_to_alert() — the single place
+        that maps a row to an Alert — so no mapping logic is duplicated
+        here. The row ID is the first column of every
+        `_SELECT_COLUMNS` query.
+        """
+        return StoredAlert(id=int(row[0]), alert=AlertStore._row_to_alert(row))
