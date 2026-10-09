@@ -12,8 +12,9 @@ honeypot/log-processing component.
 """
 
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from core.ai_engine.anomaly_result import AnomalyResult
 from core.alert_engine.alert import Alert
@@ -51,6 +52,24 @@ _SELECT_BY_ID_SQL = f"SELECT {_SELECT_COLUMNS} FROM alerts WHERE id = ?"
 
 _SELECT_RECENT_SQL = f"SELECT {_SELECT_COLUMNS} FROM alerts ORDER BY id DESC LIMIT ?"
 
+# Aggregate statistics are computed by SQLite over the WHOLE table —
+# never from a limited list_recent() page. COALESCE keeps SUM() at 0
+# (instead of NULL) for an empty table; MIN/MAX/AVG stay NULL (None)
+# when there are no rows, which is the honest "no data" answer.
+_STATISTICS_SCALARS_SQL = (
+    "SELECT COUNT(*), "
+    "COALESCE(SUM(CASE WHEN is_anomaly = 1 THEN 1 ELSE 0 END), 0), "
+    "MIN(score), MAX(score), AVG(score) FROM alerts"
+)
+
+_EVENT_TYPE_COUNTS_SQL = (
+    "SELECT event_type, COUNT(*) FROM alerts GROUP BY event_type ORDER BY event_type"
+)
+
+_SOURCE_IP_COUNTS_SQL = (
+    "SELECT source_ip, COUNT(*) FROM alerts GROUP BY source_ip ORDER BY source_ip"
+)
+
 # Placeholder values for the DatasetRecord fields AlertStore never
 # persists and never recomputes (category, severity, and every
 # enrichment feature). AlertStore performs no feature extraction or
@@ -59,6 +78,65 @@ _SELECT_RECENT_SQL = f"SELECT {_SELECT_COLUMNS} FROM alerts ORDER BY id DESC LIM
 # analysis of the retrieved alert.
 _UNKNOWN_CATEGORY = "unknown"
 _UNKNOWN_SEVERITY = "unknown"
+
+
+@dataclass
+class AlertStatistics:
+    """Aggregate statistics over every alert persisted in an AlertStore.
+
+    SCOPE — persisted records only. Every value here describes the
+    rows currently stored in the AlertStore and nothing else. It is
+    NOT a summary of everything the model has predicted: the live
+    pipeline's AlertDispatcher forwards only anomalous results
+    (is_anomaly == True) for persistence, so normal/inlier predictions
+    produced during live inference are never stored and are therefore
+    never counted here. A store populated by the live pipeline will
+    normally contain anomaly records only. (Non-anomalous records can
+    exist only if something other than the live pipeline — a test, for
+    instance — saves them directly.)
+
+    Pure storage-level aggregates — counts, a ratio, and basic score
+    statistics. Nothing here interprets the data as a security
+    judgment.
+
+    Attributes:
+        total_alerts: Number of persisted alert records (rows).
+        anomaly_count: Persisted records where is_anomaly is true —
+            i.e. alerts IsolationForest flagged as statistical
+            outliers (prediction == -1). This is NOT a count of
+            confirmed attacks.
+        normal_count: Persisted records marked non-anomalous
+            (is_anomaly false), computed as total_alerts -
+            anomaly_count. This is NOT the total number of
+            normal/inlier predictions produced by the model — the live
+            pipeline does not persist those, so for a store populated
+            by the live pipeline this will normally be 0.
+        anomaly_rate: anomaly_count / total_alerts as a ratio in the
+            range 0.0–1.0 (not a percentage). It is the share of
+            PERSISTED records that are anomalous — not the share of all
+            model predictions flagged as anomalies. 0.0 when there are
+            no records.
+        event_type_counts: Number of persisted records per event_type.
+        source_ip_counts: Number of persisted records per source_ip.
+        score_min: Lowest score among persisted records, or None if
+            there are none.
+        score_max: Highest score among persisted records, or None if
+            there are none.
+        score_average: Mean score among persisted records, or None if
+            there are none. Scores are IsolationForest
+            decision-function values — lower means more anomalous —
+            not probabilities.
+    """
+
+    total_alerts: int
+    anomaly_count: int
+    normal_count: int
+    anomaly_rate: float
+    event_type_counts: Dict[str, int]
+    source_ip_counts: Dict[str, int]
+    score_min: Optional[float]
+    score_max: Optional[float]
+    score_average: Optional[float]
 
 
 class AlertStore:
@@ -185,6 +263,48 @@ class AlertStore:
         finally:
             connection.close()
         return total
+
+    def get_statistics(self) -> AlertStatistics:
+        """Compute aggregate statistics over ALL stored alerts.
+
+        Aggregation happens inside SQLite (COUNT / SUM / MIN / MAX /
+        AVG / GROUP BY) over the entire table — it is never derived
+        from a limited list_recent() page. All three queries run inside
+        one explicit read transaction, so a writer committing between
+        them cannot make the totals, the anomaly count, and the
+        per-event-type / per-IP breakdowns disagree with each other.
+
+        Returns:
+            An AlertStatistics. For an empty store: zero counts,
+            anomaly_rate 0.0, empty count dicts, and None score
+            statistics.
+        """
+        connection = sqlite3.connect(self._path)
+        try:
+            connection.execute("BEGIN")
+            (
+                total_alerts,
+                anomaly_count,
+                score_min,
+                score_max,
+                score_average,
+            ) = connection.execute(_STATISTICS_SCALARS_SQL).fetchone()
+            event_type_counts = dict(connection.execute(_EVENT_TYPE_COUNTS_SQL).fetchall())
+            source_ip_counts = dict(connection.execute(_SOURCE_IP_COUNTS_SQL).fetchall())
+        finally:
+            connection.close()
+
+        return AlertStatistics(
+            total_alerts=total_alerts,
+            anomaly_count=anomaly_count,
+            normal_count=total_alerts - anomaly_count,
+            anomaly_rate=(anomaly_count / total_alerts) if total_alerts > 0 else 0.0,
+            event_type_counts=event_type_counts,
+            source_ip_counts=source_ip_counts,
+            score_min=score_min,
+            score_max=score_max,
+            score_average=score_average,
+        )
 
     @staticmethod
     def _row_to_alert(row) -> Alert:
