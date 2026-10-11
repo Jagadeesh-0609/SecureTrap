@@ -68,3 +68,48 @@ describe('COPY: semantics rules', () => {
     expect(COPY.states.empty.detail).toMatch(/no API endpoint reports detector activity/i);
   });
 });
+
+describe('COPY: alerts pages', () => {
+  it('says on the list that a flagged record is not a confirmed attack and a score is not a probability', () => {
+    expect(COPY.alerts.semantics).toMatch(/statistical outlier/i);
+    expect(COPY.alerts.semantics).toMatch(/not a confirmed attack/i);
+    expect(COPY.alerts.semantics).toMatch(/scores are not probabilities or confidence values/i);
+  });
+
+  it('says on the detail page that the flag is not a confirmed attack and a score is not a probability', () => {
+    expect(COPY.alertDetail.semantics).toMatch(/not a confirmed attack/i);
+    expect(COPY.alertDetail.scoreNote).toMatch(/scores are not probabilities or confidence values/i);
+  });
+
+  it('names the model\'s raw prediction values without renaming them', () => {
+    expect(COPY.alertDetail.predictionOutlier).toBe('-1 (outlier)');
+    expect(COPY.alertDetail.predictionInlier).toBe('1 (inlier)');
+  });
+
+  it('describes the list as persisted records ordered by when they were persisted', () => {
+    expect(COPY.alerts.intro).toMatch(/persisted alert records/i);
+    expect(COPY.alerts.intro).toMatch(/not necessarily by event time/i);
+  });
+
+  it('warns that the command is untrusted text, and says invisible characters are marked', () => {
+    expect(COPY.alertDetail.commandNote).toMatch(/untrusted text/i);
+    expect(COPY.alertDetail.commandNote).toMatch(/\[U\+XXXX\] markers/);
+  });
+
+  it('keeps the placeholders the pages fill in', () => {
+    expect(COPY.alerts.countMany).toContain('{count}');
+    expect(COPY.alerts.showingMany).toContain('{shown}');
+    expect(COPY.alerts.showingMany).toContain('{count}');
+    expect(COPY.alerts.limitNote).toContain('{limit}');
+    expect(COPY.alerts.noResults.body).toContain('{count}');
+    expect(COPY.alertDetail.states.notFound.body).toContain('{id}');
+    expect(COPY.alertDetail.predictionOther).toContain('{value}');
+  });
+
+  it('has no column or field for severity, confidence or risk, which the API does not provide', () => {
+    const labels = [...Object.values(COPY.alerts.table), ...Object.values(COPY.alertDetail.fields)];
+    for (const label of labels) {
+      expect(label, label).not.toMatch(/severity|confidence|risk|priority|threat/i);
+    }
+  });
+});

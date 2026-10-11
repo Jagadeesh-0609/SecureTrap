@@ -29,3 +29,31 @@ export interface AlertSummaryResponse {
   score_max: number | null;
   score_average: number | null;
 }
+
+/**
+ * One persisted alert, as returned by GET /api/v1/alerts (a JSON array of
+ * these) and GET /api/v1/alerts/{alert_id}.
+ *
+ * `id` is the alert's persisted database ID (storage metadata: it reflects the
+ * order alerts were persisted, not their event time). The remaining fields
+ * mirror the backend's Alert domain model exactly. The API has no severity,
+ * category or confidence field, and none is invented here.
+ */
+export interface AlertResponse {
+  id: number;
+  /** ISO 8601 event time as recorded by the honeypot (normally UTC, "...Z"). */
+  timestamp: string;
+  source_ip: string;
+  session_id: string;
+  protocol: string;
+  honeypot: string;
+  event_type: string;
+  /** Attacker-controlled free text: untrusted, rendered only as text. */
+  command: string;
+  /** IsolationForest's raw output: 1 = inlier, -1 = outlier. */
+  prediction: number;
+  /** IsolationForest decision_function score. Not a probability. */
+  score: number;
+  /** True exactly when prediction is -1: a statistical outlier, not a verdict. */
+  is_anomaly: boolean;
+}

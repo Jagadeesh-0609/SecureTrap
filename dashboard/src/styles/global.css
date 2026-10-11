@@ -487,6 +487,275 @@ h1 {
   padding: 0 var(--space-4);
 }
 
+/* ---- Alerts: list, filters, detail ------------------------------------- */
+
+.page-note {
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--info);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.back-link {
+  font-size: 0.9375rem;
+}
+
+/* Moving focus to a page heading is for screen readers; the heading is not a
+   control, so it gets no focus ring. */
+h1[tabindex='-1']:focus {
+  outline: none;
+}
+
+/* Text that comes from honeypot traffic (commands, IPs, event names). It may
+   be very long, and it may contain bidirectional control characters, which
+   must not reorder the text around it. */
+.untrusted-text {
+  overflow-wrap: anywhere;
+  unicode-bidi: isolate;
+}
+
+.alerts-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.count-line {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* Filters */
+
+.filter-bar {
+  --label-height: 1.3125rem;
+
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.field label {
+  min-height: var(--label-height);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.field--grow {
+  flex: 1 1 18rem;
+}
+
+/* Lines the button up with the inputs, which sit below their labels. */
+.field--action {
+  padding-top: calc(var(--label-height) + var(--space-1));
+}
+
+.field__hint {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.input {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: inherit;
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+.input:hover {
+  border-color: var(--accent);
+}
+
+.filter-bar .button {
+  min-height: 2.5rem;
+}
+
+.filter-bar .button:disabled {
+  cursor: not-allowed;
+}
+
+/* Table */
+
+.table-scroll {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.alerts-table {
+  width: 100%;
+  min-width: 52rem;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.alerts-table th,
+.alerts-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.alerts-table thead th {
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.alerts-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
+.alerts-table tbody tr:hover {
+  background: var(--surface-raised);
+}
+
+.alerts-table tbody th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.alerts-table .alerts-table__number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.alerts-table__nowrap {
+  white-space: nowrap;
+}
+
+.alerts-table__mono {
+  font-family: var(--font-mono);
+}
+
+.alerts-table__command {
+  min-width: 14rem;
+  max-width: 24rem;
+}
+
+/* The anomaly flag is always written out, so it never relies on colour alone. */
+.flag {
+  display: inline-block;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.flag--on {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.flag--off {
+  color: var(--text-muted);
+}
+
+/* Loading placeholder */
+
+.alerts-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.alerts-skeleton__row {
+  width: 100%;
+  height: 2.75rem;
+}
+
+/* Detail */
+
+.detail-list {
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.detail-list__row {
+  display: grid;
+  grid-template-columns: minmax(9rem, 13rem) minmax(0, 1fr);
+  gap: var(--space-1) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-list__row:last-child {
+  border-bottom: 0;
+}
+
+.detail-list dt {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.detail-list dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.detail-list__note {
+  margin-top: var(--space-1);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.command-block {
+  max-height: 24rem;
+  margin: 0;
+  padding: var(--space-3);
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+}
+
+.command-block code {
+  font-size: inherit;
+}
+
 /* ---- Motion & small screens -------------------------------------------- */
 
 @keyframes pulse {
@@ -515,5 +784,22 @@ h1 {
 
   .summary-card__value {
     font-size: 1.875rem;
+  }
+
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .field--grow {
+    flex-basis: auto;
+  }
+
+  .field--action {
+    padding-top: 0;
+  }
+
+  .detail-list__row {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

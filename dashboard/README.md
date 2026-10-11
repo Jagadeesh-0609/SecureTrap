@@ -2,11 +2,11 @@
 
 A read-only web dashboard for the SecureTrap API. Phase 8.1 is the **foundation**:
 the application shell, navigation, API client, configuration, and an **Overview**
-page built from `GET /health` and `GET /api/v1/alerts/summary`.
+page built from `GET /health` and `GET /api/v1/alerts/summary`. Phase 8.2 adds the
+**Alerts** page and the **alert detail** view (see [Alerts](#alerts-phase-82)).
 
-The alerts table, alert detail view and charts come in later phases. The code is
-already organised so they can be added without reworking the shell (see
-[Structure](#structure)).
+Charts come in a later phase. The code is already organised so they can be added
+without reworking the shell (see [Structure](#structure)).
 
 ## Requirements
 
@@ -146,22 +146,53 @@ dashboard/
     ├── config.ts           # VITE_API_BASE_URL resolution + validation
     ├── copy.ts             # ALL semantic wording lives here (and is tested)
     ├── api/                # client (timeouts, errors), runtime validators, endpoints
-    ├── hooks/              # useHealth, useAlertSummary (React Query)
-    ├── pages/              # OverviewPage + its state machine, NotFound, ConfigError
-    ├── components/         # SummaryCards, StatePanel, ApiStatus, ... and layout/
-    ├── utils/format.ts     # number / percent / time formatting
+    ├── hooks/              # useHealth, useAlertSummary, useAlerts, useAlertDetail (React Query)
+    ├── pages/              # Overview, Alerts, AlertDetail (+ their state/filter logic), NotFound, ConfigError
+    ├── components/         # SummaryCards, AlertsTable, AlertsFilterBar, StatePanel, ApiStatus, ... and layout/
+    ├── utils/              # format.ts (numbers, percents, times, UTC alert timestamps), alertId.ts
     ├── styles/global.css   # design tokens, dark-first with light theme
     └── test/               # MSW server, fixtures, render helpers
 ```
 
 Where later phases plug in:
 
-- **Alerts table / detail** — add a route in `App.tsx`, enable the `Alerts` item in
-  `components/layout/NavBar.tsx` (currently shown as "Soon" and not focusable),
-  and add endpoints in `api/endpoints.ts` with a validator in `api/validators.ts`.
+- **A new page** — add a route in `App.tsx`, switch its item on in
+  `components/layout/NavBar.tsx` (an item with `enabled: false` is shown as "Soon"
+  and is not focusable), and add endpoints in `api/endpoints.ts` with a validator
+  in `api/validators.ts`.
 - **New wording** — add it to `copy.ts`. `copy.test.ts` and `source-safety.test.ts`
   fail if banned claims ("attack" outside a negation, "probability"/"confidence"
   outside the disclaimer, "healthy", "operational", …) appear anywhere else.
+
+## Alerts (Phase 8.2)
+
+Routes: `/alerts` (list) and `/alerts/:alertId` (detail). Both read the API through
+the same client, with runtime validation of every response.
+
+| Page   | Endpoint                          | Notes                                                                 |
+| ------ | --------------------------------- | --------------------------------------------------------------------- |
+| List   | `GET /api/v1/alerts?limit=200`    | Newest persisted first, as the API returns them. Loaded once, again only on **Refresh** (no polling, no refetch on focus). |
+| Detail | `GET /api/v1/alerts/{alert_id}`   | Uses the persisted ID. An ID that is not a positive whole number never reaches the API. HTTP 404 is shown as "Alert not found", not as a failure. |
+
+Fields shown are exactly those the API returns (`id`, `timestamp`, `source_ip`,
+`session_id`, `protocol`, `honeypot`, `event_type`, `command`, `prediction`,
+`score`, `is_anomaly`). The API has no severity or confidence field, so none is
+shown. `is_anomaly` is displayed as "Flagged" / "Not flagged": a statistical
+outlier, never a confirmed attack, and the score is never presented as a
+probability.
+
+- **Search and filters** run in the browser over the loaded alerts: a
+  case-insensitive search (every word must match; ID, time, source IP, session,
+  protocol, honeypot, event type, command), an event-type filter and an
+  anomaly-flag filter. A filter is only offered when the loaded data can support
+  it. The filters are kept in the address (`?q=`, `?type=`, `?flag=`), so they
+  survive opening an alert and "Back to alerts".
+- **Times** are shown in UTC. A timestamp that is not an unambiguous ISO 8601
+  date-time with an offset is shown exactly as recorded.
+- **Untrusted text.** Commands, IPs and event names come from honeypot sessions.
+  They are rendered as text only, long values are shortened in the table (the
+  detail page shows them in full), and invisible direction and zero-width
+  characters are shown as `[U+XXXX]` markers so text cannot be disguised.
 
 ## Testing
 
@@ -176,9 +207,11 @@ set in `vite.config.ts`, so they never depend on a local `.env` file.
 
 ## Known limits (by design, for this phase)
 
-- No alerts table, detail page, charts, filtering or pagination. The API's list
-  endpoint only supports `limit`.
-- No real-time push; the Overview polls.
+- No charts. The Alerts page has no pagination: the API's list endpoint only
+  supports `limit`, so the page loads the 200 most recently persisted alerts and
+  searches and filters those in the browser.
+- No real-time push; the Overview polls, and the Alerts page loads on open and on
+  Refresh only.
 - No authentication, reporting or Docker setup.
 - Built assets are referenced from `/`. Serving the dashboard from a sub-path
   needs Vite's `base` option set at build time; this is not configured yet.

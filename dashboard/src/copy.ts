@@ -98,6 +98,109 @@ export const COPY = {
     notFound: { title: 'Page not found', body: 'There is nothing at this address.', back: 'Back to the overview' },
   },
 
+  alerts: {
+    title: 'Alerts',
+    intro:
+      'Persisted alert records, newest first by when each was persisted (not necessarily by event time).',
+    refreshHint: 'Loaded when you open this page. Use Refresh to check for newer alerts.',
+    semantics:
+      'A flagged record is a statistical outlier from an unsupervised model, not a confirmed attack. Scores are not probabilities or confidence values.',
+    countOne: '{count} alert returned',
+    countMany: '{count} alerts returned',
+    showingOne: 'Showing {shown} of {count} returned alert',
+    showingMany: 'Showing {shown} of {count} returned alerts',
+    limitNote:
+      'The API was asked for the {limit} most recently persisted alerts. Older alerts, if any, are not loaded here.',
+    filters: {
+      label: 'Filter alerts',
+      search: 'Search',
+      searchHint:
+        'Case-insensitive. Looks through ID, time, source IP, session, protocol, honeypot, event type and command. Every word must match.',
+      searchPlaceholder: 'IP, event type, command…',
+      eventType: 'Event type',
+      allEventTypes: 'All event types',
+      flag: 'Anomaly flag',
+      allFlags: 'All records',
+      flagged: 'Flagged as anomaly',
+      notFlagged: 'Not flagged',
+      clear: 'Clear filters',
+    },
+    noResults: {
+      title: 'No alerts match the filters',
+      body: 'None of the {count} loaded alerts match. Change the search or clear the filters.',
+    },
+    table: {
+      caption: 'Persisted alerts, newest first',
+      scrollLabel: 'Alerts table. Scrolls sideways on narrow screens.',
+      id: 'ID',
+      time: 'Time (UTC)',
+      eventType: 'Event type',
+      sourceIp: 'Source IP',
+      command: 'Command',
+      score: 'Score',
+      flag: 'Anomaly flag',
+      open: 'Open alert',
+      flagged: 'Flagged',
+      notFlagged: 'Not flagged',
+      noCommand: '(none)',
+    },
+    states: {
+      loading: 'Loading alerts…',
+      empty: {
+        title: 'No alerts persisted yet',
+        body: 'The alert store has no records.',
+      },
+      unavailableBody: 'The request did not complete, so alerts could not be loaded.',
+      httpErrorBody:
+        'Alerts could not be loaded. This is a failure on the API side; trying again may help.',
+    },
+  },
+
+  alertDetail: {
+    title: 'Alert',
+    back: 'Back to alerts',
+    semantics:
+      'An anomaly flag means the model marked this record as a statistical outlier. It is not a confirmed attack.',
+    fields: {
+      id: 'Alert ID',
+      time: 'Time (UTC)',
+      timestamp: 'Recorded timestamp',
+      sourceIp: 'Source IP',
+      sessionId: 'Session ID',
+      protocol: 'Protocol',
+      honeypot: 'Honeypot',
+      eventType: 'Event type',
+      command: 'Command',
+      prediction: 'Model prediction',
+      score: 'Anomaly score',
+      flag: 'Anomaly flag',
+    },
+    commandNote:
+      'Shown as recorded. It comes from the honeypot session and is untrusted text. Invisible direction and zero-width characters are shown as [U+XXXX] markers.',
+    noCommand: '(none)',
+    predictionOutlier: '-1 (outlier)',
+    predictionInlier: '1 (inlier)',
+    predictionOther: '{value} (not a value this dashboard recognises)',
+    scoreNote:
+      'Raw IsolationForest decision score; lower values are more outlying. Scores are not probabilities or confidence values.',
+    flagged: 'Flagged as an anomaly (statistical outlier)',
+    notFlagged: 'Not flagged as an anomaly',
+    states: {
+      loading: 'Loading alert…',
+      notFound: {
+        title: 'Alert not found',
+        body: 'No persisted alert has the ID {id}.',
+      },
+      invalidId: {
+        title: 'Invalid alert ID',
+        body: 'Alert IDs are positive whole numbers. Check the address and try again.',
+      },
+      unavailableBody: 'The request did not complete, so the alert could not be loaded.',
+      httpErrorBody:
+        'The alert could not be loaded. This is a failure on the API side; trying again may help.',
+    },
+  },
+
   apiStatus: {
     checking: 'Checking API…',
     checkingDetail: 'Waiting for the API to answer its /health check.',

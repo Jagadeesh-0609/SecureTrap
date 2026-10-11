@@ -1,4 +1,5 @@
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { ConfigErrorPage } from '../../pages/ConfigErrorPage';
@@ -31,15 +32,46 @@ describe('AppShell', () => {
     await screen.findByText('API reachable');
   });
 
-  it('lists Alerts as not yet available rather than as a dead link', async () => {
+  it('lists Overview and Alerts as links, and neither is marked "Soon"', async () => {
     renderApp();
 
-    expect(screen.queryByRole('link', { name: /alerts/i })).not.toBeInTheDocument();
     const nav = screen.getByRole('navigation', { name: 'Primary' });
-    const pending = within(nav).getByText('Alerts').closest('[aria-disabled="true"]');
-    expect(pending).not.toBeNull();
-    expect(pending).toHaveTextContent('Soon');
+    expect(within(nav).getByRole('link', { name: 'Overview' })).toHaveAttribute('href', '/');
+    expect(within(nav).getByRole('link', { name: 'Alerts' })).toHaveAttribute('href', '/alerts');
+    expect(within(nav).queryByText('Soon')).not.toBeInTheDocument();
+    expect(nav.querySelector('[aria-disabled="true"]')).toBeNull();
     await screen.findByText('API reachable');
+  });
+
+  it('marks only the Alerts link as current on the alerts page', async () => {
+    renderApp('/alerts');
+
+    const nav = screen.getByRole('navigation', { name: 'Primary' });
+    expect(within(nav).getByRole('link', { name: 'Alerts' })).toHaveAttribute('aria-current', 'page');
+    expect(within(nav).getByRole('link', { name: 'Overview' })).not.toHaveAttribute('aria-current');
+    await screen.findByText('API reachable');
+  });
+
+  it('does not mark Alerts as current on the overview page', async () => {
+    renderApp('/');
+
+    const nav = screen.getByRole('navigation', { name: 'Primary' });
+    expect(within(nav).getByRole('link', { name: 'Alerts' })).not.toHaveAttribute('aria-current');
+    await screen.findByText('API reachable');
+  });
+
+  it('moves between the overview and the alerts page with the navigation links', async () => {
+    const user = userEvent.setup();
+    renderApp('/');
+    const nav = screen.getByRole('navigation', { name: 'Primary' });
+
+    await user.click(within(nav).getByRole('link', { name: 'Alerts' }));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Alerts' })).toBeInTheDocument();
+    expect(await screen.findByRole('table', { name: 'Persisted alerts, newest first' })).toBeInTheDocument();
+
+    await user.click(within(nav).getByRole('link', { name: 'Overview' }));
+    expect(await screen.findByRole('heading', { level: 1, name: 'Overview' })).toBeInTheDocument();
+    expect(await screen.findByRole('article', { name: 'Persisted alerts' })).toBeInTheDocument();
   });
 
   it('shows the read-only / not-a-confirmed-attack footer', async () => {

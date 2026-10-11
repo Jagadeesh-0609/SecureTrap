@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render } from '@testing-library/react';
 import type { ReactElement } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, type InitialEntry } from 'react-router-dom';
 
 import { AppRoutes } from '../App';
 
@@ -21,8 +21,11 @@ export function renderWithQuery(ui: ReactElement) {
   return { ...utils, queryClient };
 }
 
-/** Render the whole route table at `route`, as the real app would. */
-export function renderApp(route = '/') {
+/**
+ * Render the whole route table at `route`, as the real app would. `route` may
+ * be a path ("/alerts?q=x") or a location object, to start with router state.
+ */
+export function renderApp(route: InitialEntry = '/') {
   const queryClient = createTestQueryClient();
   const utils = render(
     <QueryClientProvider client={queryClient}>

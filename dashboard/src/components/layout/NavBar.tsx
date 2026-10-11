@@ -7,12 +7,13 @@ type NavItem =
   | { label: string; enabled: false };
 
 /**
- * The primary navigation. Later phases switch an item to `enabled: true` and
- * register its route in App.tsx; nothing else here needs to change.
+ * The primary navigation. An item that is not built yet is listed with
+ * `enabled: false` (shown as "Soon", not focusable); a later phase switches
+ * it on and registers its route in App.tsx.
  */
 const NAV_ITEMS: readonly NavItem[] = [
   { label: COPY.nav.overview, enabled: true, to: '/' },
-  { label: COPY.nav.alerts, enabled: false },
+  { label: COPY.nav.alerts, enabled: true, to: '/alerts' },
 ];
 
 export function NavBar() {
@@ -24,7 +25,6 @@ export function NavBar() {
             {item.enabled ? (
               <NavLink
                 to={item.to}
-                end
                 className={({ isActive }) =>
                   isActive ? 'nav__link nav__link--active' : 'nav__link'
                 }
