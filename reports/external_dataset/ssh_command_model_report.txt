@@ -1,0 +1,40 @@
+SecureTrap — Offline External Model Evaluation
+==============================================
+
+Purpose
+-------
+Evaluate the existing six-feature anomaly-detection pipeline against
+external SSH command events without modifying the live pipeline.
+
+Evaluation
+----------
+Baseline records used for fitting: 44
+External command records scored: 28
+Statistical anomalies flagged: 4
+Statistical inliers flagged: 24
+Regression tests passed: 55
+
+Feature set
+-----------
+command_length
+has_command
+has_url
+has_ip_address
+has_file_path
+has_shell_metacharacters
+
+Safety and limitations
+----------------------
+- External commands were not executed.
+- No live alert database was accessed or modified.
+- The detector was fitted offline on the baseline records.
+- Anomaly flags indicate statistical outliers, not confirmed attacks.
+- Ground-truth labels are unavailable; accuracy, precision, recall,
+  and F1-score are therefore not reported.
+- Results are specific to this dataset and evaluation run.
+
+Files
+-----
+scripts/evaluate_external_model.py
+reports/external_dataset/ssh_command_model_results.csv
+reports/external_dataset/ssh_command_model_report.txt
