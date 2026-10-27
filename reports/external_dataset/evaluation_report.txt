@@ -1,0 +1,26 @@
+SecureTrap External Dataset Evaluation
+======================================
+
+Dataset: data/external/salty_seagull/extracted
+Files scanned: 177
+Valid records: 329174
+Invalid records: 0
+Unique source IPs: 26895
+Command-input events: 0
+Records missing timestamps: 0
+
+Event types:
+  cowrie.login.failed: 119176
+  cowrie.session.connect: 104999
+  cowrie.session.closed: 104999
+
+Protocols:
+  missing: 224175
+  telnet: 104999
+
+Evaluation limitations:
+- No verified ground-truth attack labels are provided here.
+- Accuracy, precision, recall, and F1 are not calculated.
+- No command-input events were found in this dataset.
+- Command-based detection cannot be validated with these records.
+- This report profiles data; it does not run the AI model.
