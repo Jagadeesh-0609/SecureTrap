@@ -1,0 +1,33 @@
+SecureTrap — SSH Command Dataset Audit
+======================================
+
+Dataset:
+A 6-Month Dataset of SSH Botnet Interactions and Command Payloads
+Source: https://zenodo.org/records/19731615
+
+Audit results:
+- Total dataset records: 145425
+- SSH connect events: 137506
+- SSH login events: 4797
+- SSH disconnect events: 3094
+- exec_command events: 28
+- Non-empty command fields across all events: 44
+- Unique non-empty commands from exec_command events: 12
+
+Feature counts on unique exec_command samples:
+- has_command: 12/12
+- has_url: 0/12
+- has_ip_address: 1/12
+- has_file_path: 4/12
+- has_shell_metacharacters: 2/12
+
+Limitations:
+- The number of unique command samples is very small.
+- Repeated commands across event types can inflate raw command counts.
+- No verified ground-truth labels are available in this audit.
+- Feature counts do not measure model accuracy or attack detection.
+- No recorded command was executed during this analysis.
+
+Conclusion:
+This dataset supports preliminary offline feature testing only.
+It is not sufficient to establish reliable AI detection performance.
